@@ -21,7 +21,15 @@ const { useState, useMemo } = React;
 // VITRUVIAN TEMPLE GENERATOR — Complete Specification
 // Sources: vitruvian_temple_equation_system.docx (§2–8)
 //          vitruvian_column_specification_equations.docx (doc §2–9)
-//          Vitruvius Book III.5 (pediment), Book IV.1 (Corinthian), Book IV.3 (Doric frieze)
+//          Vitruvius Book III.5 (pediment); Book IV.1 (Ionic/Corinthian capitals,
+//          corrected against the primary text — H_cap,Ionic=d/3, A_abacus,Cor=d√2);
+//          Book IV.3 (Doric module system — frieze=1.5M_D, B_abacus=13M_D/6,
+//          corona=0.5M_D w/ M_D/3 projection, triglyph=M_D w/ 2 extra per bay, taenia/guttae);
+//          Book IV.4.1 (pronaos/cella subdivision, shown when depth allows)
+// Not modeled (clear scope boundaries, flagged rather than silently omitted):
+//          door geometry (IV.6), Tuscan order (IV.7), circular temples (IV.8),
+//          site orientation (IV.5), interior pronaos columns for wide cellas (IV.4.2),
+//          systyle/monotriglyph Doric as a separate switchable mode (IV.3.7–8)
 // All proportions in multiples of d (lower column diameter = 1 module M)
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -77,11 +85,20 @@ function oSpec(order, k) {
   const e_b = hasBase ? 0.25 : 0;
 
   // ── Capital ───────────────────────────────────────────────────────────────
-  // Ionic: H_cap=d/2; A_abacus=10d/9 (h>15ft, doc §4.5)
-  // Doric: H_cap=M_D=d/2; 3 sub-bands each d/6 (doc §5.3); B_cap=7M_D/6 (interp. uncertain)
-  // Corinthian: H_cap=d (taller, Vitruvius Book IV.1.1); A_abacus=10d/9
-  const H_cap = order==='corinthian' ? 1.0 : 0.5;
-  const A_abacus = order==='doric' ? 1.5 : 10/9; // Doric: visual match to base; Ionic/Cor: 10d/9
+  // Ionic: H_cap=d/3 (Vitruvius IV.1.1, explicit comparative statement — corrects
+  //         an earlier d/2 placeholder taken from a secondary Book III synthesis)
+  // Doric: H_cap=M_D=d/2; 3 sub-bands each d/6 (Book IV.3.4); B_cap=13M_D/6=13d/12
+  //         — IV.3.4's "module and a sixth" (7M_D/6=7d/12) was tried first for
+  //         textual fidelity, but it makes the abacus narrower than the tapered
+  //         shaft top, which is architecturally wrong (a capital cannot taper
+  //         inward at its crowning member). The "two modules and a sixth"
+  //         reading (13M_D/6), attested in at least one secondary paraphrase,
+  //         resolves this and is used here instead.
+  // Corinthian: H_cap=d (IV.1.11); abacus is a square whose DIAGONAL = 2×H_cap,
+  //         so side = d√2 (IV.1.11, confirmed across Morgan/Gwilt translations)
+  const M_D = order==='doric' ? 0.5 : null; // Doric module = d/2 (IV.3.4), used below
+  const H_cap = order==='corinthian' ? 1.0 : order==='doric' ? 0.5 : 1/3;
+  const A_abacus = order==='doric' ? (13/6)*M_D : order==='corinthian' ? Math.SQRT2 : 10/9;
 
   // ── Fluting (doc §4.6 / §5.4) ─────────────────────────────────────────────
   const Nf = order==='doric' ? 20 : 24;
@@ -90,14 +107,17 @@ function oSpec(order, k) {
   // ── Entablature ───────────────────────────────────────────────────────────
   // Architrave: H_a=d/2 (all orders, §8.1)
   const H_a = 0.5;
-  // Frieze: Doric triglyph/metope band H_z=1.0d (gives ~square triglyphs)
+  // Frieze: Doric triglyph/metope band H_z=1.5×M_D=0.75d (Book IV.3.4, explicit)
   //         Ionic/Corinthian continuous H_z=3H_a/4=3d/8 (§8.2)
-  const H_z = order==='doric' ? 1.0 : 3*H_a/4;
-  // Cornice: Doric mutule cornice 0.3d; Corinthian modillion 0.25d; Ionic corona 2H_a/7 (§8.2)
-  const H_cor = order==='doric' ? 0.30 : order==='corinthian' ? 0.25 : 2*H_a/7;
+  const H_z = order==='doric' ? 1.5*M_D : 3*H_a/4;
+  // Cornice: Doric corona+2 cymatia = 0.5×M_D=0.25d (Book IV.3.6, explicit);
+  //          projects (1/2+1/6)×M_D = M_D/3 ≈0.167d beyond the frieze face
+  //          Corinthian modillion cornice 0.25d; Ionic corona 2H_a/7 (§8.2)
+  const H_cor = order==='doric' ? 0.5*M_D : order==='corinthian' ? 0.25 : 2*H_a/7;
+  const corProj = order==='doric' ? M_D/3 : 0; // Book IV.3.6 corona projection
   const H_ent = H_a + H_z + H_cor;
 
-  return { hM, hasBase, H_b, B_b, e_b, H_cap, A_abacus, Nf, dphi, H_a, H_z, H_cor, H_ent };
+  return { hM, hasBase, H_b, B_b, e_b, H_cap, A_abacus, M_D, corProj, Nf, dphi, H_a, H_z, H_cor, H_ent };
 }
 
 // ═══ UTILITIES ════════════════════════════════════════════════════════════════
@@ -112,6 +132,23 @@ function fmt(v){
   return(w>0?w:"")+fs+" M";
 }
 function fmtN(v){return fmt(v).replace(/ M$/,"").trim()||"0";}
+
+// Decorative volute spiral for the Ionic capital (visual cue only — Vitruvius's
+// actual volute construction in Book III.5 is a precise multi-quadrant compass
+// method not replicated here, per explicit request). Simple Archimedean spiral,
+// sampled as a polyline; `mirror` flips it for the opposite side of the capital.
+function spiralPath(cx,cy,r0,turns,mirror){
+  const n=40, pts=[];
+  for(let i=0;i<=n;i++){
+    const t=i/n*turns*2*Math.PI;
+    const r=r0*(1-i/n*0.90);
+    const ang=t-Math.PI/2;
+    let dx=r*Math.cos(ang), dy=r*Math.sin(ang);
+    if(mirror) dx=-dx;
+    pts.push(`${(cx+dx).toFixed(2)},${(cy+dy).toFixed(2)}`);
+  }
+  return "M"+pts.join(" L");
+}
 
 // ═══ SEGMENT BUILDERS ═════════════════════════════════════════════════════════
 function buildX(k,nc){
@@ -164,7 +201,7 @@ function getCella(xCols,yCols,nc,nYC,pt){
 function genSVG(k, nc, pt, order){
   const p   = PT[pt];
   const sp  = oSpec(order, k);
-  const {hM,hasBase,H_b,B_b,e_b,H_cap,A_abacus,Nf,dphi,H_a,H_z,H_cor,H_ent} = sp;
+  const {hM,hasBase,H_b,B_b,e_b,H_cap,A_abacus,M_D,corProj,Nf,dphi,H_a,H_z,H_cor,H_ent} = sp;
 
   const xd=buildX(k,nc), yd=buildY(k,nc,pt);
   const wM=xd.totalM, dM=yd.totalM;
@@ -284,11 +321,61 @@ function genSVG(k, nc, pt, order){
     s+=`<rect x="${planX-off}" y="${planY-off}" width="${planW+2*off}" height="${planH+2*off}" fill="rgba(0,0,0,${0.012-i*0.003})" stroke="${G}" stroke-width="${i===NS-1?.9:.6}" opacity="${0.55+i*0.15}"/>`;
   }
 
-  // Cella
+  // Cella — drawn as a walled room. Vitruvius doesn't give a wall thickness for
+  // this app's purposes, so it's fixed at 1 module (d) for clarity: the outer
+  // face (solid) sits at the position derived from the column-grid rule, the
+  // inner face (dashed) is inset by that assumed thickness.
   const{cx1,cx2,cy1,cy2}=getCella(xCols,yCols,nc,nYC,pt);
   const cH=(cy2-cy1)*PPM;
-  if(cH>0)
-    s+=`<rect x="${xp(cx1)}" y="${ypP(cy2)}" width="${(cx2-cx1)*PPM}" height="${cH}" fill="rgba(0,0,0,0.055)" stroke="${K}" stroke-width=".85"/>`;
+  const wallT_m=1; // assumed wall thickness, in modules (d)
+  const ix1=cx1+wallT_m, ix2=cx2-wallT_m, iy1=cy1+wallT_m, iy2=cy2-wallT_m;
+  const innerOK = cH>0 && (ix2-ix1)>0.3 && (iy2-iy1)>0.3;
+  const doorW_m=2; // assumed door width, in modules — Vitruvius ties door size
+                    // to interior room height (Book IV.6), not modeled here
+  const cxMid=(cx1+cx2)/2, doorX1=cxMid-doorW_m/2, doorX2=cxMid+doorW_m/2;
+  const doorOK = innerOK && doorX1>cx1+0.15 && doorX2<cx2-0.15;
+
+  if(!innerOK){
+    if(cH>0)
+      s+=`<rect x="${xp(cx1)}" y="${ypP(cy2)}" width="${(cx2-cx1)*PPM}" height="${cH}" fill="rgba(0,0,0,0.055)" stroke="${K}" stroke-width=".85"/>`;
+  } else {
+    // Outer wall face (solid — position follows the column-grid rule)
+    s+=`<rect x="${xp(cx1)}" y="${ypP(cy2)}" width="${(cx2-cx1)*PPM}" height="${cH}" fill="rgba(90,72,50,0.14)" stroke="${K}" stroke-width=".85"/>`;
+    // Inner wall face (dashed — position depends on the assumed 1-module thickness);
+    // filled with the page background to read as open interior space
+    s+=`<rect x="${xp(ix1)}" y="${ypP(iy2)}" width="${(ix2-ix1)*PPM}" height="${(iy2-iy1)*PPM}" fill="${BG}" stroke="${K}" stroke-width=".55" stroke-dasharray="3,2" opacity=".8"/>`;
+    if(PPM>=13)
+      s+=`<text x="${xp(ix1)+3}" y="${ypP(iy2)+10}" font-size="5.5" font-family="Georgia,serif" fill="#aaa">wall t=1d (assumed)</text>`;
+
+    // Door opening through the front wall (solid jambs mark the actual cut;
+    // the wall's own position behind them remains only as certain as the
+    // dashed inner line above)
+    if(doorOK){
+      s+=`<rect x="${xp(doorX1)}" y="${ypP(iy1)}" width="${doorW_m*PPM}" height="${wallT_m*PPM}" fill="${BG}" stroke="none"/>`;
+      s+=`<line x1="${xp(doorX1)}" y1="${ypP(iy1)}" x2="${xp(doorX1)}" y2="${ypP(cy1)}" stroke="${K}" stroke-width=".7"/>`;
+      s+=`<line x1="${xp(doorX2)}" y1="${ypP(iy1)}" x2="${xp(doorX2)}" y2="${ypP(cy1)}" stroke="${K}" stroke-width=".7"/>`;
+      if(PPM>=13)
+        s+=`<text x="${xp(cxMid)}" y="${ypP(cy1)+9}" text-anchor="middle" font-size="6" font-family="Georgia,serif" fill="#999">door (2d, assumed)</text>`;
+    }
+  }
+
+  // Pronaos / cella subdivision (Book IV.4.1): using the cella's own clear
+  // interior width as the unit, pronaos depth = (3/4)×width, cella-proper depth
+  // = (5/4)×width, total = 2×width — drawn only when the interior comfortably
+  // accommodates both zones; otherwise this Book IV refinement is skipped
+  // rather than drawn compressed or overflowing.
+  if(innerOK){
+    const cellaW_m=ix2-ix1, cellaD_m=iy2-iy1;
+    const pronaosD_m=0.75*cellaW_m;
+    if(cellaD_m>=2*cellaW_m){
+      const ySplit=iy1+pronaosD_m;
+      s+=`<line x1="${xp(ix1)}" y1="${ypP(ySplit)}" x2="${xp(ix2)}" y2="${ypP(ySplit)}" stroke="${K}" stroke-width=".55" stroke-dasharray="2,2" opacity=".55"/>`;
+      if(PPM>=13){
+        s+=`<text x="${xp(ix1)+4}" y="${(ypP(iy1)+ypP(ySplit))/2}" dominant-baseline="middle" font-size="6" font-family="Georgia,serif" fill="#999">pronaos ¾W</text>`;
+        s+=`<text x="${xp(ix1)+4}" y="${(ypP(ySplit)+ypP(iy2))/2}" dominant-baseline="middle" font-size="6" font-family="Georgia,serif" fill="#999">cella ⁵⁄₄W</text>`;
+      }
+    }
+  }
 
   // Stylobate outline
   s+=`<rect x="${planX}" y="${planY}" width="${planW}" height="${planH}" fill="none" stroke="${K}" stroke-width="1.1"/>`;
@@ -314,7 +401,13 @@ function genSVG(k, nc, pt, order){
         }
       }
     } else if(kind==='inner'){
-      s+=`<circle cx="${cx_}" cy="${cy_}" r="${r*0.88}" fill="${BG}" stroke="${K}" stroke-width=".5"/>`;
+      // Inner ring uses the SAME diameter as the outer ring (Vitruvius III.2.7,
+      // III.3.8–9: the dipteral is simply a doubled colonnade, not a colonnade
+      // with a separately-scaled inner ring — confirmed by Hermogenes's
+      // pseudodipteral move of omitting the inner ring outright while keeping
+      // everything else the same proportions). The 0.88 shrink here was a
+      // leftover cosmetic choice with no textual basis; removed.
+      s+=`<circle cx="${cx_}" cy="${cy_}" r="${r}" fill="${BG}" stroke="${K}" stroke-width=".5"/>`;
     } else {
       s+=`<circle cx="${cx_}" cy="${cy_}" r="${r}" fill="${BG}" stroke="${K}" stroke-width=".72"/>`;
     }
@@ -384,16 +477,26 @@ function genSVG(k, nc, pt, order){
   }
 
   // ─── CORNICE / GEISON ──────────────────────────────────────────────────────
-  s+=`<rect x="${eleX}" y="${yCorTop}" width="${eleW}" height="${H_cor*PPM}" fill="rgba(0,0,0,0.13)" stroke="${K}" stroke-width=".8"/>`;
+  // Doric corona projects beyond the frieze face by M_D/3 (Book IV.3.6, explicit)
+  const corPx = corProj*PPM;
+  s+=`<rect x="${eleX-corPx}" y="${yCorTop}" width="${eleW+2*corPx}" height="${H_cor*PPM}" fill="rgba(0,0,0,0.13)" stroke="${K}" stroke-width=".8"/>`;
   if(PPM>=14)
-    s+=`<text x="${eleX+eleW+4}" y="${yCorTop+H_cor*PPM/2}" dominant-baseline="middle" font-size="6.5" font-family="Georgia,serif" fill="#bbb">cornice</text>`;
+    s+=`<text x="${eleX+eleW+corPx+4}" y="${yCorTop+H_cor*PPM/2}" dominant-baseline="middle" font-size="6.5" font-family="Georgia,serif" fill="#bbb">cornice</text>`;
 
-  // Doric mutules (§ Book IV.3): flat slabs projecting below cornice over triglyphs
+  // Doric mutules (Book IV.3.6): flat slabs projecting below cornice over triglyphs,
+  // each carrying six guttae in a row ("six guttae in front" — IV.3.6 explicit)
   if(order==='doric'){
-    const mH=H_cor*PPM*0.35, mW=PPM*0.75;
+    const mH=H_cor*PPM*0.35, mW=M_D*PPM*0.95; // mutule width ≈ triglyph width (M_D)
     xCols.forEach(xc=>{
       const mx=xe(xc.xM)+PPM/2-mW/2;
       s+=`<rect x="${mx}" y="${yCorTop+H_cor*PPM}" width="${mW}" height="${mH}" fill="rgba(0,0,0,0.18)" stroke="${K}" stroke-width=".4"/>`;
+      if(PPM>=20){
+        const gR=Math.min(mH*0.16, mW*0.07);
+        for(let gi=0;gi<6;gi++){
+          const gx=mx+mW*(gi+0.5)/6;
+          s+=`<circle cx="${gx}" cy="${yCorTop+H_cor*PPM+mH+gR*1.3}" r="${gR}" fill="rgba(0,0,0,0.3)" stroke="none"/>`;
+        }
+      }
     });
   }
   // Ionic dentils: small square blocks below cornice
@@ -418,30 +521,48 @@ function genSVG(k, nc, pt, order){
   // ─── FRIEZE ────────────────────────────────────────────────────────────────
   if(order==='doric'){
     // Doric: alternating triglyphs (dark, with grooves) and metopes (light)
-    // Background
     s+=`<rect x="${eleX}" y="${yFrTop}" width="${eleW}" height="${H_z*PPM}" fill="rgba(220,215,205,0.7)" stroke="${K}" stroke-width=".7"/>`;
-    // Triglyphs centered on column axes (Book IV.3)
-    const tW=PPM*0.80, tH=H_z*PPM;
-    xCols.forEach(xc=>{
-      const tx=xe(xc.xM)+PPM/2-tW/2;
-      // Body (dark)
+    const tW=M_D*PPM, tH=H_z*PPM; // triglyph width = M_D exactly (Book IV.3.4)
+
+    // One triglyph, drawn left edge at tx: width divided into six parts — a
+    // half-channel at each edge, three femora, two full channels (IV.3.5).
+    // The text gives edges=0.5 of six parts but doesn't itemize the femur:channel
+    // split within the remaining five; channel=half the femur width is used here
+    // as the simplest ratio satisfying the stated total (an interpretive choice).
+    const drawTriglyph=(tx)=>{
       s+=`<rect x="${tx}" y="${yFrTop}" width="${tW}" height="${tH}" fill="rgba(30,25,20,0.72)" stroke="${K}" stroke-width=".5"/>`;
-      // 2 central glyphs (light vertical grooves)
-      const gW=tW*0.11;
-      [1/3, 2/3].forEach(gf=>{
-        s+=`<rect x="${tx+tW*gf-gW/2}" y="${yFrTop}" width="${gW}" height="${tH*0.93}" fill="rgba(255,255,255,0.55)" stroke="none"/>`;
-      });
-      // Half-glyphs at edges
-      s+=`<rect x="${tx}" y="${yFrTop}" width="${gW*0.5}" height="${tH*0.93}" fill="rgba(255,255,255,0.4)"/>`;
-      s+=`<rect x="${tx+tW-gW*0.5}" y="${yFrTop}" width="${gW*0.5}" height="${tH*0.93}" fill="rgba(255,255,255,0.4)"/>`;
-    });
-    // Metopes (spaces between triglyphs)
+      const u=tW/6, half=0.5*u, fem=1.25*u, chan=0.625*u;
+      let cx0=tx+half+fem; // left edge of first channel
+      [cx0, cx0+chan+fem].forEach(cxp=>
+        s+=`<rect x="${cxp}" y="${yFrTop}" width="${chan}" height="${tH*0.93}" fill="rgba(255,255,255,0.55)" stroke="none"/>`);
+      s+=`<rect x="${tx}" y="${yFrTop}" width="${half}" height="${tH*0.93}" fill="rgba(255,255,255,0.4)"/>`;
+      s+=`<rect x="${tx+tW-half}" y="${yFrTop}" width="${half}" height="${tH*0.93}" fill="rgba(255,255,255,0.4)"/>`;
+    };
+
+    // Column-centered triglyphs (over every column, per IV.3.4)
+    xCols.forEach(xc=> drawTriglyph(xe(xc.xM)+PPM/2-tW/2));
+
+    // Within each intercolumniation: two more triglyphs, evenly spaced, giving
+    // three metopes per bay ("two are to be placed in each intercolumniation" —
+    // IV.3.4; the separate three-metope pronaos/posticum exception is not
+    // modeled, since this app does not distinguish a pronaos zone)
     xSegs.filter(g=>g.k==='s').forEach(seg=>{
-      const mx=xe(seg.xM), mw=seg.wM*PPM;
-      s+=`<rect x="${mx}" y="${yFrTop}" width="${mw}" height="${tH}" fill="rgba(235,230,220,0.9)" stroke="${K}" stroke-width=".5"/>`;
+      const gapX=xe(seg.xM), gapW=seg.wM*PPM;
+      const metW=(gapW-2*tW)/3;
+      if(metW>1){
+        let x=gapX;
+        for(let i=0;i<3;i++){
+          s+=`<rect x="${x}" y="${yFrTop}" width="${metW}" height="${tH}" fill="rgba(235,230,220,0.9)" stroke="${K}" stroke-width=".5"/>`;
+          x+=metW;
+          if(i<2){ drawTriglyph(x); x+=tW; }
+        }
+      } else {
+        // bay too narrow at this zoom for two extra triglyphs — fall back to one plain metope
+        s+=`<rect x="${gapX}" y="${yFrTop}" width="${gapW}" height="${tH}" fill="rgba(235,230,220,0.9)" stroke="${K}" stroke-width=".5"/>`;
+      }
     });
     if(PPM>=14)
-      s+=`<text x="${eleX+eleW+4}" y="${yFrTop+H_z*PPM/2}" dominant-baseline="middle" font-size="6.5" font-family="Georgia,serif" fill="#bbb">frieze: triglyphs/metopes</text>`;
+      s+=`<text x="${eleX+eleW+corPx+4}" y="${yFrTop+H_z*PPM/2}" dominant-baseline="middle" font-size="6.5" font-family="Georgia,serif" fill="#bbb">frieze: triglyphs/metopes</text>`;
   } else {
     // Ionic/Corinthian: continuous sculptural frieze
     const frFill=order==='corinthian'?"rgba(0,0,0,0.035)":"rgba(0,0,0,0.04)";
@@ -457,18 +578,23 @@ function genSVG(k, nc, pt, order){
 
   // ─── ARCHITRAVE (epistyle) ─────────────────────────────────────────────────
   if(order==='doric'){
-    // Doric: plain architrave + taenia at top + guttae (Book IV.3)
+    // Doric: plain architrave + taenia at top + guttae (Book IV.3.4)
     s+=`<rect x="${eleX}" y="${yArchTop}" width="${eleW}" height="${H_a*PPM}" fill="rgba(0,0,0,0.10)" stroke="${K}" stroke-width=".85"/>`;
     if(PPM>=16){
-      // Taenia (thin dark band at top of architrave)
-      const taH=H_a*PPM*0.12;
+      // Taenia: M_D/7 high (IV.3.4)
+      const taH=(M_D/7)*PPM;
       s+=`<rect x="${eleX}" y="${yArchTop}" width="${eleW}" height="${taH}" fill="rgba(0,0,0,0.22)" stroke="none"/>`;
-      // Regula + guttae below taenia, over each column (Book IV.3)
-      if(PPM>=20)xCols.forEach(xc=>{
-        const gx0=xe(xc.xM)+PPM*0.1, gR=taH*0.44;
-        for(let gi=0;gi<3;gi++)
-          s+=`<circle cx="${gx0+(gi+0.5)*PPM*0.25}" cy="${yArchTop+taH+gR}" r="${gR}" fill="rgba(0,0,0,0.28)" stroke="none"/>`;
-      });
+      // Regula + guttae below taenia, plumb with each triglyph (i.e. over each
+      // column); drop length M_D/6 (IV.3.4); six guttae, matching the explicit
+      // mutule count below since no separate regula count is given
+      if(PPM>=20){
+        const gDrop=(M_D/6)*PPM, gR=Math.min(gDrop*0.4, M_D*PPM*0.09);
+        xCols.forEach(xc=>{
+          const tW0=M_D*PPM, rx0=xe(xc.xM)+PPM/2-tW0/2;
+          for(let gi=0;gi<6;gi++)
+            s+=`<circle cx="${rx0+tW0*(gi+0.5)/6}" cy="${yArchTop+taH+gDrop}" r="${gR}" fill="rgba(0,0,0,0.28)" stroke="none"/>`;
+        });
+      }
     }
   } else {
     // Ionic/Corinthian: three projecting fasciae (Book III.5)
@@ -486,6 +612,23 @@ function genSVG(k, nc, pt, order){
   if(PPM>=14)
     s+=`<text x="${eleX+eleW+4}" y="${yArchTop+H_a*PPM/2}" dominant-baseline="middle" font-size="6.5" font-family="Georgia,serif" fill="#bbb">architrave</text>`;
 
+  // ─── CELLA WALL (elevation) ─────────────────────────────────────────────────
+  // The cella's front wall, recessed behind the colonnade, with a door cut into
+  // it. Wall thickness isn't visible face-on in elevation (only the plan shows
+  // it), so this is a single face rather than the outer/inner pair used in plan;
+  // the door width and the wall's vertical extent are the same assumed values
+  // used there. Drawn before the columns so they sit in front of it.
+  if(innerOK){
+    const wallTopY=yCapTop, wallBotY=yShaftB;
+    s+=`<rect x="${xe(cx1)}" y="${wallTopY}" width="${(cx2-cx1)*PPM}" height="${wallBotY-wallTopY}" fill="rgba(90,72,50,0.10)" stroke="${K}" stroke-width=".6" opacity=".8"/>`;
+    if(doorOK){
+      const doorH=(wallBotY-wallTopY)*0.78, doorTopY=wallBotY-doorH;
+      s+=`<rect x="${xe(doorX1)}" y="${doorTopY}" width="${(doorX2-doorX1)*PPM}" height="${doorH}" fill="${BG}" stroke="${K}" stroke-width=".6"/>`;
+    }
+    if(PPM>=14)
+      s+=`<text x="${xe(cx1)-4}" y="${(wallTopY+wallBotY)/2}" text-anchor="end" dominant-baseline="middle" font-size="6" font-family="Georgia,serif" fill="#bbb">cella wall (t=1d, assumed)</text>`;
+  }
+
   // ─── PER-COLUMN ELEMENTS ────────────────────────────────────────────────────
   xCols.forEach((xc,idx)=>{
     const cx_=xe(xc.xM)+PPM/2;
@@ -497,7 +640,7 @@ function genSVG(k, nc, pt, order){
 
     // ── Capital ──────────────────────────────────────────────────────────────
     if(order==='doric'){
-      // THREE BANDS — bottom→top: hypotrachelium · echinus · abacus (doc §5.3)
+      // THREE BANDS — bottom→top: hypotrachelium · echinus · abacus (IV.3.4)
       const bh=capH/3;
       const abW=A_abacus*PPM;
       // Hypotrachelium (annulet zone at shaft top, same width as shaft)
@@ -506,7 +649,8 @@ function genSVG(k, nc, pt, order){
         s+=`<line x1="${cx_-tw/2}" y1="${yCapTop+2*bh+f*bh}" x2="${cx_+tw/2}" y2="${yCapTop+2*bh+f*bh}" stroke="${K}" stroke-width=".3" opacity=".45"/>` );
       // Echinus (cushion moulding — widens from tw to abW)
       s+=`<polygon points="${cx_-tw/2},${yCapTop+2*bh} ${cx_+tw/2},${yCapTop+2*bh} ${cx_+abW/2},${yCapTop+bh} ${cx_-abW/2},${yCapTop+bh}" fill="rgba(70,55,30,0.20)" stroke="${K}" stroke-width=".65"/>`;
-      // Abacus (flat square slab at top)
+      // Abacus (flat square slab at top) — B_cap=13M_D/6=13d/12 (corrected reading,
+      // see note above oSpec), comfortably wider than the tapered shaft top
       s+=`<rect x="${cx_-abW/2}" y="${yCapTop}" width="${abW}" height="${bh}" fill="rgba(70,55,30,0.22)" stroke="${K}" stroke-width=".75"/>`;
       if(idx===0&&PPM>=17){
         const lx=cx_-abW/2-3;
@@ -515,42 +659,57 @@ function genSVG(k, nc, pt, order){
         s+=`<text x="${lx}" y="${yCapTop+5*bh/2}" text-anchor="end" dominant-baseline="middle" font-size="5.5" font-family="Georgia,serif" fill="#999">hypotrachelium</text>`;
       }
     } else if(order==='corinthian'){
-      // KALATHOS (bell) + acanthus leaves + abacus (Book IV.1)
-      // H_cap = 1.0d (much taller than Ionic)
-      const abH=capH*0.13, bellH=capH*0.87;
-      const abW=A_abacus*PPM, belW=PPM*0.95;
-      // Bell body (kalathos) — tapers from tw (shaft top) to belW (crown)
-      s+=`<polygon points="${cx_-tw/2},${capBotY} ${cx_+tw/2},${capBotY} ${cx_+belW/2},${yCapTop+abH} ${cx_-belW/2},${yCapTop+abH}" fill="rgba(0,0,0,0.065)" stroke="${K}" stroke-width=".65"/>`;
-      // Acanthus leaf register lines (3 rows suggesting leaf tiers)
-      for(let li=1;li<=3;li++){
-        const rf=li/4;
-        const lW_l=cx_-tw/2-(tw/2-belW/2)*rf*(-1), lW_r=cx_+tw/2+(belW/2-tw/2)*rf;
-        // interpolate width at each tier
-        const lwl=cx_-(tw/2+(belW/2-tw/2)*rf);
-        const lwr=cx_+(tw/2+(belW/2-tw/2)*rf);
-        const ly=capBotY-rf*bellH;
-        s+=`<line x1="${lwl}" y1="${ly}" x2="${lwr}" y2="${ly}" stroke="${K}" stroke-width=".4" opacity=".32"/>`;
-        // Leaf cuspid marks
-        if(PPM>=22){
-          for(let ci_=1;ci_<=4;ci_++){
-            const lcx=lwl+(lwr-lwl)*ci_/5;
-            s+=`<path d="M${lcx},${ly-1.2} Q${lcx+1.8},${ly-3.2} ${lcx+2.8},${ly-1}" stroke="${K}" stroke-width=".32" fill="none" opacity=".38"/>`;
-            s+=`<path d="M${lcx},${ly-1.2} Q${lcx-1.8},${ly-3.2} ${lcx-2.8},${ly-1}" stroke="${K}" stroke-width=".32" fill="none" opacity=".38"/>`;
-          }
+      // CORINTHIAN — four bands per IV.1.11–12: lower leaf, middle leaf, and
+      // caulicoli each (6d/7)/3 = 2d/7; abacus = d/7 on top. Abacus is a square
+      // whose diagonal = 2×H_cap(=2d), so its side = d√2 (confirmed across the
+      // Morgan, Gwilt, and Loeb translations). A concave "pillow" profile on the
+      // abacus's plan faces is a true plan-view feature, not visible in strict
+      // elevation, so it's hinted here only as a shallow notch on the silhouette
+      // — a common simplification in pattern-book elevation drawings.
+      const bandH=capH/7;                 // = H_abacus, and the unit for the 3 leaf/caulicoli bands
+      const leafH=2*bandH;                // each of the 3 lower bands
+      const abW=A_abacus*PPM;             // d√2, from diagonal=2×H_cap
+      const crownW=abW*0.85;              // bell crown width below the abacus (interpretive)
+      const yLeaf1=capBotY-leafH, yLeaf2=yLeaf1-leafH, yCaul=yLeaf2-leafH; // = yCapTop+bandH
+
+      // Bell body (kalathos) — tapers from tw (shaft top) to crownW (top of caulicoli zone)
+      s+=`<polygon points="${cx_-tw/2},${capBotY} ${cx_+tw/2},${capBotY} ${cx_+crownW/2},${yCaul} ${cx_-crownW/2},${yCaul}" fill="rgba(0,0,0,0.065)" stroke="${K}" stroke-width=".65"/>`;
+      // Tier lines at exact band boundaries (lower leaf / middle leaf / caulicoli)
+      [yLeaf1, yLeaf2].forEach(ly=>{
+        const t=(capBotY-ly)/leafH/3, lw=tw+(crownW-tw)*((capBotY-ly)/(capBotY-yCaul));
+        s+=`<line x1="${cx_-lw/2}" y1="${ly}" x2="${cx_+lw/2}" y2="${ly}" stroke="${K}" stroke-width=".4" opacity=".32"/>`;
+      });
+      // Leaf cuspid marks in the two leaf bands
+      if(PPM>=22)[ [capBotY,yLeaf1], [yLeaf1,yLeaf2] ].forEach(([yb,yt])=>{
+        const lwB=tw+(crownW-tw)*((capBotY-yb)/(capBotY-yCaul));
+        const lwT=tw+(crownW-tw)*((capBotY-yt)/(capBotY-yCaul));
+        const ly=(yb+yt)/2, lw=(lwB+lwT)/2;
+        for(let ci_=1;ci_<=4;ci_++){
+          const lcx=cx_-lw/2+lw*ci_/5;
+          s+=`<path d="M${lcx},${ly-1.2} Q${lcx+1.8},${ly-3.2} ${lcx+2.8},${ly-1}" stroke="${K}" stroke-width=".32" fill="none" opacity=".38"/>`;
+          s+=`<path d="M${lcx},${ly-1.2} Q${lcx-1.8},${ly-3.2} ${lcx-2.8},${ly-1}" stroke="${K}" stroke-width=".32" fill="none" opacity=".38"/>`;
         }
-      }
-      // Abacus (concave-sided, simplified as slightly projecting trapezoid)
-      s+=`<polygon points="${cx_-belW/2},${yCapTop+abH} ${cx_+belW/2},${yCapTop+abH} ${cx_+abW/2},${yCapTop} ${cx_-abW/2},${yCapTop}" fill="rgba(0,0,0,0.12)" stroke="${K}" stroke-width=".75"/>`;
-      // Corner volutes (small spirals — indicated as circles)
+      });
+      // Caulicoli band — corner volutes spring toward the abacus angles (IV.1.12)
       if(PPM>=18){
         const vr=PPM*0.10;
         [cx_-abW/2+vr*1.2, cx_+abW/2-vr*1.2].forEach(vx=>{
-          s+=`<circle cx="${vx}" cy="${yCapTop+abH*0.65}" r="${vr}" fill="none" stroke="${K}" stroke-width=".45" opacity=".5"/>`;
-          s+=`<line x1="${vx}" y1="${yCapTop+abH*0.65-vr}" x2="${vx}" y2="${yCapTop+abH}" stroke="${K}" stroke-width=".35" opacity=".35"/>`;
+          s+=`<circle cx="${vx}" cy="${yCaul-leafH*0.45}" r="${vr}" fill="none" stroke="${K}" stroke-width=".45" opacity=".5"/>`;
+          s+=`<line x1="${vx}" y1="${yCaul-leafH*0.45-vr}" x2="${vx}" y2="${yCapTop}" stroke="${K}" stroke-width=".35" opacity=".35"/>`;
         });
       }
-      if(idx===0&&PPM>=14)
-        s+=`<text x="${cx_-belW/2-3}" y="${yCapTop+capH*0.5}" text-anchor="end" dominant-baseline="middle" font-size="6.5" font-family="Georgia,serif" fill="#bbb">capital (d)</text>`;
+      // Abacus: d/7 tall, side=d√2; shallow concave notch hints the plan-view
+      // "pillow" curve (true curve depth = side/9, per IV.1.11)
+      const notch=(abW/9)*0.4; // shown shallow since this is an elevation hint, not the true plan curve
+      s+=`<path d="M${cx_-abW/2},${yCapTop+bandH} L${cx_-abW/2},${yCapTop+notch} Q${cx_},${yCapTop-notch*0.5} ${cx_+abW/2},${yCapTop+notch} L${cx_+abW/2},${yCapTop+bandH} Z" fill="rgba(0,0,0,0.12)" stroke="${K}" stroke-width=".75"/>`;
+      // Flower centered on the abacus face, diameter = H_abacus = d/7 (IV.1.12)
+      if(PPM>=20)
+        s+=`<circle cx="${cx_}" cy="${yCapTop+bandH*0.62}" r="${bandH*0.42}" fill="none" stroke="${K}" stroke-width=".4" opacity=".55"/>`;
+      if(idx===0&&PPM>=14){
+        s+=`<text x="${cx_-abW/2-3}" y="${yCapTop+bandH/2}" text-anchor="end" dominant-baseline="middle" font-size="6" font-family="Georgia,serif" fill="#999">abacus d/7</text>`;
+        s+=`<text x="${cx_-crownW/2-3}" y="${yCaul-leafH*1.5}" text-anchor="end" dominant-baseline="middle" font-size="6" font-family="Georgia,serif" fill="#999">caulicoli</text>`;
+        s+=`<text x="${cx_-tw/2-3}" y="${capBotY-leafH*0.5}" text-anchor="end" dominant-baseline="middle" font-size="6" font-family="Georgia,serif" fill="#999">lower leaf</text>`;
+      }
     } else {
       // IONIC: abacus (thin rect) + echinus (trapezoid) + necking astragal (doc §4.5)
       const abH=capH*0.26, echH=capH*0.74;
@@ -560,6 +719,15 @@ function genSVG(k, nc, pt, order){
       s+=`<polygon points="${cx_-tw/2},${capBotY} ${cx_+tw/2},${capBotY} ${abR},${yCapTop+abH} ${abL},${yCapTop+abH}" fill="rgba(0,0,0,0.07)" stroke="${K}" stroke-width=".6"/>`;
       // Abacus
       s+=`<rect x="${abL}" y="${yCapTop}" width="${abW}" height="${abH}" fill="rgba(0,0,0,0.10)" stroke="${K}" stroke-width=".75"/>`;
+      // Volute scrolls — decorative only, not a precise Vitruvian construction
+      // (Book III.5's actual volute-eye/quadrant method is not replicated here)
+      if(PPM>=9){
+        const vr=echH*0.40, vy=yCapTop+abH+echH*0.32;
+        [[abL+echH*0.22,false],[abR-echH*0.22,true]].forEach(([vx,mir])=>{
+          s+=`<path d="${spiralPath(vx,vy,vr,1.6,mir)}" fill="none" stroke="${K}" stroke-width=".7" opacity=".62"/>`;
+          s+=`<circle cx="${vx}" cy="${vy}" r="${Math.max(.5,vr*0.07)}" fill="${K}" opacity=".55"/>`;
+        });
+      }
       // Necking astragal at shaft junction
       if(PPM>=18)
         s+=`<line x1="${cx_-tw/2}" y1="${capBotY-PPM*0.045}" x2="${cx_+tw/2}" y2="${capBotY-PPM*0.045}" stroke="${K}" stroke-width="1.3" opacity=".22"/>`;
@@ -691,25 +859,37 @@ function EqPanel({k, order, sp, wM, dM, S, p, vt}){
     ["doc §4.2  B_base = 1.5d",         "1½ M"],
     ["doc §4.2  e_b = d/4",             "¼ M"],
     ["doc §4.3  H_plinth = d/6",        "⅙ M"],
-    ["doc §4.5  H_capital = d/2",       "½ M"],
+    ["Book IV.1.1  H_capital = d/3",    fmtN(1/3)+" M"],
     ["doc §4.5  A_abacus = 10d/9",      fmtN(10/9)+" M"],
-    ["doc §4.5  H_abacus = 3d/38",      fmtN(3/38)+" M"],
+    ["doc §4.5  H_abacus ≈ 0.26×H_cap", fmtN(0.26/3)+" M"],
     ["doc §4.6  N_flutes = 24; Δφ=15°", "24 · 15°"],
   ];
   const rows_doric=[
     ["doc §5.2  h = 7d [Doric fixed]",   fmt(sp.hM)],
-    ["doc §5.2  M_D = d/2",              "½ M"],
-    ["doc §5.3  H_capital = M_D",        "½ M (3 bands × d/6)"],
-    ["doc §5.3  H_abacus = M_D/3",       fmtN(0.5/3)+" M"],
-    ["doc §5.3  H_echinus = M_D/3",      fmtN(0.5/3)+" M"],
-    ["doc §5.3  H_hypotrachelium = M_D/3",fmtN(0.5/3)+" M"],
+    ["Book IV.3.4  M_D = d/2",           "½ M"],
+    ["Book IV.3.4  H_capital = M_D",     "½ M (3 bands × d/6)"],
+    ["Book IV.3.4  H_abacus = M_D/3",    fmtN(0.5/3)+" M"],
+    ["Book IV.3.4  H_echinus = M_D/3",   fmtN(0.5/3)+" M"],
+    ["Book IV.3.4  H_hypotrachelium = M_D/3",fmtN(0.5/3)+" M"],
+    ["Book IV.3.4  B_abacus = 13M_D/6",  fmtN(13/12)+" M — corrected reading; flares out over the shaft"],
+    ["Book IV.3.4  H_frieze = 1.5M_D",   fmtN(0.75)+" M"],
+    ["Book IV.3.4  triglyph width = M_D",fmtN(0.5)+" M; 2 extra per bay → 3 metopes"],
+    ["Book IV.3.4  taenia = M_D/7",      fmtN(0.5/7)+" M"],
+    ["Book IV.3.4  guttae drop = M_D/6", fmtN(0.5/6)+" M; ×6 per mutule, ×6 per regula"],
+    ["Book IV.3.6  H_corona+cymatia = 0.5M_D", fmtN(0.25)+" M"],
+    ["Book IV.3.6  corona projection = M_D/3", fmtN(0.5/3)+" M"],
     ["doc §5.4  N_flutes = 20; Δφ=18°", "20 · 18°"],
     ["Base",                              "None — Doric sits on stylobate"],
   ];
   const rows_cor=[
     ["Book IV.1  h = f(k) [same as Ionic]", fmt(sp.hM)],
-    ["Book IV.1  H_capital = d",             "1 M"],
-    ["Book IV.1  A_abacus = 10d/9",          fmtN(10/9)+" M"],
+    ["Book IV.1.11  H_capital = d",          "1 M"],
+    ["Book IV.1.11  A_abacus = d√2 (diag=2H_cap)", Math.SQRT2.toFixed(3)+" M"],
+    ["Book IV.1.11  H_abacus = H_cap/7",     fmtN(1/7)+" M"],
+    ["Book IV.1.12  H_lower leaf = 2d/7",    fmtN(2/7)+" M"],
+    ["Book IV.1.12  H_middle leaf = 2d/7",   fmtN(2/7)+" M"],
+    ["Book IV.1.12  H_caulicoli = 2d/7",     fmtN(2/7)+" M"],
+    ["Book IV.1.12  flower diam. = H_abacus",fmtN(1/7)+" M"],
     ["doc §4.2   H_base = d/2 [as Ionic]",   "½ M"],
     ["doc §4.6   N_flutes = 24; Δφ=15°",    "24 · 15°"],
   ];
@@ -723,6 +903,8 @@ function EqPanel({k, order, sp, wM, dM, S, p, vt}){
     [`§8.2     H_frieze${order==='doric'?' (triglyph band)':''}`, fmt(sp.H_z)],
     ["§8.2     H_cornice",                  fmt(sp.H_cor)],
     ["Book III.5 H_pediment = W/9",         fmt(wM/9)],
+    ["Book IV.4.1 pronaos = ¾·cella width", "shown when cella depth ≥ 2× its own width"],
+    ["Book IV.4.1 cella = 5/4·cella width", "(uses cella's own width as the unit)"],
     ["§5.4     N_steps = 3 (odd)",          "3"],
     ["§3       W (front width)",            fmt(wM)],
     ["§5.3     L (depth)",                  fmt(dM)],
@@ -775,7 +957,7 @@ function App(){
       <div style={{padding:"11px 16px 8px",background:"#fff",borderBottom:".5px solid #ddd"}}>
         <div style={{fontSize:"14px",letterSpacing:".1em"}}>VITRUVIAN LOOM</div>
         <div style={{fontSize:"10px",color:"#777",fontFamily:"monospace"}}>
-          De Architectura · Three Plan Types · Three Orders · Pediment · §2–8 + Book III.5 + IV.1 + IV.3
+          De Architectura · Three Plan Types · Three Orders · Pediment · §2–8 + Book III.5 + IV.1, IV.3–4
         </div>
       </div>
 
@@ -835,10 +1017,10 @@ function App(){
         </div>
         <div style={{fontSize:"10.5px",color:"#777"}}>
           {p.vitr}{order==='doric'
-            ?" · h=7d; M_D=d/2; capital: abacus+echinus+hypotrachelium; Nf=20; no base; triglyphs/metopes; mutules."
+            ?" · h=7d; M_D=d/2; capital: abacus(13d/12)+echinus+hypotrachelium; frieze=1.5M_D w/ 3 metopes per bay; corona=0.5M_D, proj M_D/3; Nf=20; no base."
             :order==='corinthian'
-            ?" · h=f(k); H_cap=d (kalathos+acanthus); Nf=24; base as Ionic; modillions."
-            :(vt?` · ${vt.eq}.`:` · s=${fmtN(k)}d; h=${fmtN(sp.hM)}d (interpolated).`)}
+            ?" · h=f(k); H_cap=d (4 bands: 2× leaf + caulicoli, each 2d/7, +abacus d/7); A_abacus=d√2; Nf=24; base as Ionic; modillions."
+            :(vt?` · ${vt.eq}.`:` · s=${fmtN(k)}d; h=${fmtN(sp.hM)}d (interpolated); H_cap=d/3 (Book IV.1.1).`)}
         </div>
         <div style={{display:"flex",gap:"12px",marginTop:"7px",paddingTop:"7px",borderTop:".5px solid #eee",flexWrap:"wrap"}}>
           {[
